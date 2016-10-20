@@ -73,3 +73,22 @@ void NaiveParallelSort(Iter begin, Iter end)
       [&]() { NaiveParallelSort(mid, end); });
    std::inplace_merge(begin, mid, end);
 }
+
+//! \brief Parallel merge sort using the hand-written task system
+template<typename Iter>
+void TaskSystemParallelSort(Iter begin, Iter end)
+{
+   auto res = ParallelDivideAndConquer<true>(
+      std::make_pair(begin, end),
+      task::GetMaxConcurrency(),
+      [](auto pair, size_t chunks) { return SplitRange(pair.first, pair.second, chunks); },
+      [](auto l, auto r)
+      {
+         _ASSERT(l.second == r.first);
+         std::inplace_merge(l.first, l.second, r.second);
+         return std::make_pair(l.first, r.second);
+      },
+      [](auto pair) { std::sort(pair.first, pair.second); return pair; },
+      ExecParallelFlags::MergeIsTrivial
+      );
+}

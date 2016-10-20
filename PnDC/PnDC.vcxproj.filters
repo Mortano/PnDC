@@ -21,6 +21,9 @@
     <ClCompile Include="RuntimeMeasurement.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TaskSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Sorting.h">
@@ -36,6 +39,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="RuntimeMeasurement.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TaskSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ConcurrentQueue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

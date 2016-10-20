@@ -7,6 +7,7 @@
 
 #include "MathUtil.h"
 #include "TupleUtil.h"
+#include "TaskSystem.h"
 
 namespace
 {
@@ -26,6 +27,35 @@ namespace
       return results;
    }
 
+   //! \brief Launches an async task with the STL concurrency system
+   template<typename Func, typename... Args>
+   decltype(auto) Async_STL(Func&& func, Args&&... args)
+   {
+      return std::async(std::launch::async, std::forward<Func>(func), std::forward<Args>(args)...);
+   }
+
+   //! \brief Launches an async task with the hand-written task system
+   template<typename Func, typename... Args>
+   decltype(auto) Async_TaskSystem(Func&& func, Args&&... args)
+   {
+      return task::AddAwaitableTask(std::forward<Func>(func), std::forward<Args>(args)...);
+   }
+
+   struct AsyncSTL_Impl
+   {
+      template<typename Func, typename... Args> 
+      static decltype(auto) async(Func&& func, Args&&... args) { return Async_STL(std::forward<Func>(func), std::forward<Args>(args)...); }
+   };
+
+   struct AsyncTaskSystem_Impl
+   {
+      template<typename Func, typename... Args>
+      static decltype(auto) async(Func&& func, Args&&... args) { return Async_TaskSystem(std::forward<Func>(func), std::forward<Args>(args)...); }
+   };
+
+   template<bool UseTaskSystem> using AsyncImpl = 
+      std::conditional_t<UseTaskSystem, AsyncTaskSystem_Impl, AsyncSTL_Impl>;
+
    //! \brief Performs a binary fold operation on the given range. This takes pairs of consecutive elements
    //!        and folds them using the given fold function, then stores the results consecutively starting
    //!        from the beginning of the range
@@ -37,8 +67,9 @@ namespace
    RndIter BinaryFold(RndIter begin, RndIter end, Func fold)
    {
       auto count = std::distance(begin, end);
+      using Dist_t = decltype(count);
       _ASSERT(math::IsEven(count));
-      for (size_t idx = 0; idx < count; idx += 2)
+      for (Dist_t idx = 0; idx < count; idx += 2)
       {
          auto writeIdx = idx / 2;
          *(begin + writeIdx) = fold(*(begin + idx), *(begin + idx + 1));
@@ -53,17 +84,22 @@ namespace
    //! \param end End of the range
    //! \param fold Fold function
    //! \returns End of the range after fold
-   template<typename RndIter, typename Func>
+   template<
+      bool UseTaskSystem = false,
+      typename RndIter, 
+      typename Func
+   >
    RndIter ParallelBinaryFold(RndIter begin, RndIter end, Func fold)
    {
       auto count = std::distance(begin, end);
+      using Dist_t = decltype(count);
       _ASSERT(math::IsEven(count));
       std::vector<std::future<void>> futures;
       futures.reserve(count / 2);
-      for (size_t idx = 0; idx < count; idx += 2)
+      for (Dist_t idx = 0; idx < count; idx += 2)
       {
          auto writeIdx = idx / 2;
-         futures.push_back(std::async(std::launch::async, [=]()
+         futures.push_back(AsyncImpl<UseTaskSystem>::async([=]()
          {
             *(begin + writeIdx) = fold(*(begin + idx), *(begin + idx + 1));
          }));
@@ -103,6 +139,7 @@ constexpr bool operator&(ExecParallelFlags l, ExecParallelFlags r)
 //! \param rootTask The root task to be executed for the split data chunks
 //! \param flags Optional flags for the execution
 template<
+   bool UseTaskSystem = false,
    typename Elem,
    typename Split,
    typename Merge,
@@ -119,13 +156,13 @@ auto ParallelDivideAndConquer(
    if (subtasks % 2 != 0) throw std::exception("Currently only an even number of subtasks is supported!");
 
    auto dataChunks = splitFunc(data, subtasks);
-   using RootFuture_t = decltype(std::async(std::launch::async, rootTask, *std::begin(dataChunks)));
+   using RootFuture_t = decltype(AsyncImpl<UseTaskSystem>::async(rootTask, *std::begin(dataChunks)));
    std::vector<RootFuture_t> rootFutures;
    rootFutures.reserve(subtasks);
 
    for (auto&& chunk : dataChunks)
    {
-      rootFutures.push_back(std::async(std::launch::async, rootTask, chunk));
+      rootFutures.push_back(AsyncImpl<UseTaskSystem>::async(rootTask, chunk));
    }
 
    auto results = AggregateAllFutures(rootFutures);
@@ -144,7 +181,7 @@ auto ParallelDivideAndConquer(
    {
       while (std::distance(resultsBegin, resultsEnd) > 1)
       {
-         resultsEnd = ParallelBinaryFold(resultsBegin, resultsEnd, mergeFunc);
+         resultsEnd = ParallelBinaryFold<UseTaskSystem>(resultsBegin, resultsEnd, mergeFunc);
       }
    }
 

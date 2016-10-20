@@ -68,33 +68,45 @@ size_t ParallelSum(const std::vector<size_t>& numbers)
          return ret;
       },
       [](auto l, auto r) { return l + r; },
-      [](auto elem) { return std::accumulate(elem.first, elem.second, 0); });
+         [](auto elem) { return std::accumulate(elem.first, elem.second, size_t{ 0 }); });
 }
 
 int main(int argc, char** argv)
 {
    constexpr size_t NumberCount = 1'000'000;
-   constexpr size_t Iterations = 100;
-   auto rndNumbers = RandomNumbers(NumberCount);
-   auto rndNumbersCopy = rndNumbers;
-   
-   auto sequentialSortStas = rt::CollectRuntimeStats([](auto& numbers)
+   constexpr size_t Iterations = 500;
+   std::vector<std::vector<size_t>> rndNumbers;
+   std::generate_n(std::back_inserter(rndNumbers), Iterations, [=]() { return RandomNumbers(NumberCount); });
+
+   task::Initialize();
+
+   //auto sequentialSortStas = rt::CollectRuntimeStats([](auto& numbers)
+   //   {
+   //      SequentialSort(numbers.begin(), numbers.end());
+   //   }, 
+   //   [=]() { return RandomNumbers(NumberCount); },
+   //   Iterations);
+   //auto parallelSortStats = rt::CollectRuntimeStats([&](auto& numbers)
+   //   {
+   //      ParallelSort<8>(numbers.begin(), numbers.end());
+   //   }, 
+   //   [=]() { return RandomNumbers(NumberCount); },
+   //   Iterations);
+   auto taskSystemParallelSortStats = rt::CollectRuntimeStats([&](auto& numbers)
       {
-         SequentialSort(numbers.begin(), numbers.end());
-      }, 
-      [=]() { return RandomNumbers(NumberCount); },
-      Iterations);
-   auto parallelSortStats = rt::CollectRuntimeStats([&](auto& numbers)
-      {
-         ParallelSort<4>(numbers.begin(), numbers.end());
-      }, 
-      [=]() { return RandomNumbers(NumberCount); },
+         TaskSystemParallelSort(numbers.begin(), numbers.end());
+      },
+      [&]() mutable { auto ret = std::move(rndNumbers.back()); rndNumbers.pop_back(); return ret; },
       Iterations);
 
-   std::cout << "######## Sequential sort stats ########\n";
-   std::cout << sequentialSortStas;
-   std::cout << "######## Parallel sort stats ########\n";
-   std::cout << parallelSortStats;
+   //std::cout << "######## Sequential sort stats ########\n";
+   //std::cout << sequentialSortStas;
+   //std::cout << "######## Parallel sort stats ########\n";
+   //std::cout << parallelSortStats;
+   std::cout << "######## Parallel sort with task system stats ########\n";
+   std::cout << taskSystemParallelSortStats;
+
+   task::Shutdown();
 
    getchar();
 
